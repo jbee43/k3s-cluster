@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.{yaml,yml} text eol=lf
+*.{ps1,psm1,psd1} text eol=lf
+*.sh text eol=lf
+*.md text eol=lf diff=markdown
+*.json text eol=lf

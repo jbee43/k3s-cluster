@@ -1,0 +1,38 @@
+# Pi-hole — network-wide DNS sinkhole and ad/tracker blocker.
+# Chart ref: https://github.com/MoJo2600/pihole-kubernetes/blob/master/charts/pihole/values.yaml
+replicaCount: 1
+
+admin:
+  existingSecret: pihole-admin-password
+  passwordKey: password
+
+persistentVolumeClaim:
+  enabled: true
+  storageClass: nfs-ssd
+  size: 2Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+serviceDns:
+  type: LoadBalancer
+
+serviceDhcp:
+  enabled: false
+
+serviceWeb:
+  type: ClusterIP
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+DNS1: "1.1.1.1"
+DNS2: "1.0.0.1"

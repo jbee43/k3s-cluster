@@ -1,0 +1,181 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Validate YAML
+        run: |
+          pip3 install --quiet yamllint
+          yamllint .
+
+      - name: Lint root app-of-apps chart
+        run: helm lint apps/
+
+      - name: Lint umbrella charts
+        run: |
+          for chart_yaml in platform/*/Chart.yaml; do
+            chart=$(dirname "$chart_yaml")
+            echo "--- Linting $chart ---"
+            helm dependency update "$chart"
+            helm lint "$chart"
+          done
+
+  validate:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Install kubeconform
+        run: |
+          ARCH=$(uname -m | sed 's/aarch64/arm64/' | sed 's/x86_64/amd64/')
+          wget -qO- "https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-${ARCH}.tar.gz" \
+            | tar xz -C /usr/local/bin
+
+      - name: Template and validate root chart
+        run: |
+          helm template root apps/ \
+            --set spec.source.repoURL=https://example.com/repo.git \
+            | kubeconform -strict -summary \
+              -schema-location default \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+              -skip 'Application'
+
+      - name: Template and validate umbrella charts
+        run: |
+          for chart_yaml in platform/*/Chart.yaml; do
+            chart=$(dirname "$chart_yaml")
+            name=$(basename "$chart")
+            echo "--- Validating $name ---"
+            helm dependency update "$chart"
+            helm template "$name" "$chart" \
+              | kubeconform -strict -summary \
+                -schema-location default \
+                -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+                -skip 'CustomResourceDefinition,Certificate,ClusterIssuer,IPAddressPool,L2Advertisement,RabbitmqCluster'
+          done
+
+  security:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for secrets
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scanners: secret
+          exit-code: "1"
+
+      - name: Scan for misconfigurations
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scanners: misconfig
+          exit-code: "0"
+          severity: HIGH,CRITICAL
+
+      - name: Check for hardcoded secrets in values
+        run: |
+          FOUND=0
+          for f in $(find . -name 'values.yaml'); do
+            if grep -iE '(password|secret|token|key):\s*["\x27]?[a-zA-Z0-9]{8,}' "$f" \
+              | grep -vE '(secretName|secretRef|secretKeyRef|existingSecret|Ref:|storageClassName|ingressClassName)'; then
+              echo "POTENTIAL SECRET in $f"
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -eq 1 ]; then
+            echo "::warning::Potential hardcoded secrets detected. Review the above files."
+          fi
+
+  render:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.0
+
+      - name: Render all charts
+        run: |
+          mkdir -p helm yaml
+          COUNT=$(yq '.apps | length' apps/values.yaml)
+
+          for i in $(seq 0 $((COUNT-1))); do
+            NAME=$(yq -r ".apps[$i].name" apps/values.yaml)
+            CHART=$(yq -r ".apps[$i].chart // \"\"" apps/values.yaml)
+            APP_PATH=$(yq -r ".apps[$i].path // \"\"" apps/values.yaml)
+            REPO_URL=$(yq -r ".apps[$i].repoURL // \"\"" apps/values.yaml)
+            CHART_VER=$(yq -r ".apps[$i].chartVersion // \"\"" apps/values.yaml)
+            NAMESPACE=$(yq -r ".apps[$i].namespace // \"default\"" apps/values.yaml)
+            VALUES_PATH=$(yq -r ".apps[$i].valuesPath // \"\"" apps/values.yaml)
+
+            echo "--- $NAME ---"
+
+            if [ -n "$CHART" ] && [ "$CHART" != "null" ]; then
+              if echo "$REPO_URL" | grep -q '^https\?://'; then
+                REPO_NAME=$(echo "$REPO_URL" | sed 's|https\?://||;s|/.*||;s|\.[^.]*$||')
+                helm repo add "$REPO_NAME" "$REPO_URL" --force-update 2>/dev/null || true
+                CHART_REF="$REPO_NAME/$CHART"
+              else
+                CHART_REF="oci://$REPO_URL/$CHART"
+              fi
+
+              helm show values "$CHART_REF" --version "$CHART_VER" > "helm/$NAME.yaml" 2>/dev/null \
+                || echo "# Failed to fetch values" > "helm/$NAME.yaml"
+
+              ARGS=""
+              if [ -n "$VALUES_PATH" ] && [ -f "$VALUES_PATH/values.yaml" ]; then
+                ARGS="--values $VALUES_PATH/values.yaml"
+              fi
+              helm template "$NAME" "$CHART_REF" \
+                --version "$CHART_VER" --namespace "$NAMESPACE" $ARGS \
+                > "yaml/$NAME.yaml" 2>/dev/null \
+                || echo "# Failed to render" > "yaml/$NAME.yaml"
+
+            elif [ -n "$APP_PATH" ] && [ "$APP_PATH" != "null" ]; then
+              helm dependency update "$APP_PATH" 2>/dev/null || true
+              helm show values "$APP_PATH" > "helm/$NAME.yaml" 2>/dev/null \
+                || echo "# Failed to fetch values" > "helm/$NAME.yaml"
+              helm template "$NAME" "$APP_PATH" --namespace "$NAMESPACE" \
+                > "yaml/$NAME.yaml" 2>/dev/null \
+                || echo "# Failed to render" > "yaml/$NAME.yaml"
+            fi
+          done
+
+          echo ""
+          echo "=== Rendered files ==="
+          ls -lh helm/ yaml/
+
+      - name: Upload rendered values
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-values
+          path: helm/
+
+      - name: Upload rendered manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-manifests
+          path: yaml/

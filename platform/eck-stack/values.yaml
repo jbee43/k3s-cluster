@@ -1,0 +1,115 @@
+# Elastic stack — Elasticsearch + Kibana + Filebeat (cluster log shipping).
+# Chart ref: https://github.com/elastic/cloud-on-k8s/blob/main/deploy/eck-stack/values.yaml
+eck-elasticsearch:
+  enabled: true
+  version: 8.17.0
+  nodeSets:
+    - name: default
+      count: 3
+      config:
+        node.store.allow_mmap: false
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: [ReadWriteOnce]
+            storageClassName: nfs-ssd
+            resources:
+              requests:
+                storage: 50Gi
+      podTemplate:
+        spec:
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 2Gi
+                limits:
+                  cpu: "2"
+                  memory: 4Gi
+
+eck-kibana:
+  enabled: true
+  version: 8.17.0
+  spec:
+    count: 1
+    elasticsearchRef:
+      name: eck-stack-eck-elasticsearch
+    podTemplate:
+      spec:
+        containers:
+          - name: kibana
+            resources:
+              requests:
+                cpu: 250m
+                memory: 512Mi
+              limits:
+                cpu: "1"
+                memory: 1Gi
+
+eck-beats:
+  enabled: true
+  name: filebeat
+  spec:
+    type: filebeat
+    version: 8.17.0
+    elasticsearchRef:
+      name: eck-stack-eck-elasticsearch
+    kibanaRef:
+      name: eck-stack-eck-kibana
+    config:
+      filebeat.inputs:
+        - type: container
+          paths:
+            - /var/log/containers/*.log
+      processors:
+        - add_kubernetes_metadata:
+            host: ${NODE_NAME}
+            matchers:
+              - logs_path:
+                  logs_path: /var/log/containers/
+    daemonSet:
+      podTemplate:
+        spec:
+          serviceAccountName: filebeat
+          automountServiceAccountToken: true
+          dnsPolicy: ClusterFirstWithHostNet
+          hostNetwork: true
+          securityContext:
+            runAsUser: 0
+          containers:
+            - name: filebeat
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 256Mi
+              volumeMounts:
+                - name: varlogcontainers
+                  mountPath: /var/log/containers
+                  readOnly: true
+                - name: varlogpods
+                  mountPath: /var/log/pods
+                  readOnly: true
+                - name: varlibdockercontainers
+                  mountPath: /var/lib/docker/containers
+                  readOnly: true
+          volumes:
+            - name: varlogcontainers
+              hostPath:
+                path: /var/log/containers
+            - name: varlogpods
+              hostPath:
+                path: /var/log/pods
+            - name: varlibdockercontainers
+              hostPath:
+                path: /var/lib/docker/containers
+
+eck-agent:
+  enabled: false
+
+eck-fleet-server:
+  enabled: false

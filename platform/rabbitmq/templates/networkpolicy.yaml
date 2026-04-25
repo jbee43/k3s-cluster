@@ -1,0 +1,34 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Values.cluster.name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.cluster.name }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # AMQP / AMQPS, management UI, MQTT/MQTTS, STOMP/STOMPS, inter-node, prometheus
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - { protocol: TCP, port: 5672 }
+        - { protocol: TCP, port: 5671 }
+        - { protocol: TCP, port: 15672 }
+        - { protocol: TCP, port: 15671 }
+        - { protocol: TCP, port: 1883 }
+        - { protocol: TCP, port: 8883 }
+        - { protocol: TCP, port: 61613 }
+        - { protocol: TCP, port: 61614 }
+        - { protocol: TCP, port: 4369 }
+        - { protocol: TCP, port: 25672 }
+        - { protocol: TCP, port: 15692 }
+  egress:
+    - {}
+{{- end }}

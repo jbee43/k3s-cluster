@@ -1,0 +1,43 @@
+# cert-manager — TLS certificate automation; HTTP-01 ClusterIssuers in templates/.
+# Chart ref: https://github.com/cert-manager/cert-manager/blob/master/deploy/charts/cert-manager/values.yaml
+letsencrypt:
+  email: admin@example.com
+
+cert-manager:
+  crds:
+    enabled: true
+
+  replicaCount: 2
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  webhook:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+  cainjector:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+  prometheus:
+    enabled: true
+    servicemonitor:
+      enabled: false

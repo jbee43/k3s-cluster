@@ -1,0 +1,59 @@
+# CloudNativePG cluster — PostgreSQL HA with continuous archiving.
+# Chart ref: https://github.com/cloudnative-pg/charts/blob/main/charts/cluster/values.yaml
+instances: 3
+imageName: ghcr.io/cloudnative-pg/postgresql:16.6
+
+storage:
+  storageClass: nfs-ssd
+  size: 20Gi
+
+walStorage:
+  storageClass: nfs-ssd
+  size: 5Gi
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 1Gi
+
+postgresql:
+  parameters:
+    max_connections: "200"
+    shared_buffers: 256MB
+    effective_cache_size: 512MB
+    maintenance_work_mem: 128MB
+    checkpoint_completion_target: "0.9"
+    wal_buffers: 16MB
+    random_page_cost: "1.1"
+    effective_io_concurrency: "200"
+
+monitoring:
+  enabled: false
+
+backups:
+  enabled: true
+  barmanObjectStore:
+    s3Credentials:
+      accessKeyId:
+        name: cnpg-backup-creds
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: cnpg-backup-creds
+        key: ACCESS_SECRET_KEY
+    wal:
+      compression: gzip
+    data:
+      compression: gzip
+  retentionPolicy: 30d
+  scheduledBackups:
+    - name: daily
+      schedule: "0 2 * * *"
+      backupOwnerReference: self
+      immediate: true
+    - name: weekly-full
+      schedule: "0 3 * * 0"
+      backupOwnerReference: self
+      immediate: false
