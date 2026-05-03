@@ -1,0 +1,285 @@
+spec:
+  project: default
+  source:
+    repoURL: "" # Set your Git repository URL
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+
+# ── Environment Configuration ─────────────────────────────────────────────────
+# Single source of truth for all environment-specific values.
+# Edit this section once; app entries below reference it via {{ .Values.env.* }}
+env:
+  domain: k3s.local
+  letsencryptEmail: admin@example.com
+  nas:
+    ip: "192.168.1.100"
+    ssdPath: /volume1/k3s-ssd
+    hddPath: /volume2/k3s-hdd
+    longhornBackupPath: /volume1/longhorn-backups
+  metallb:
+    addressRange: 192.168.1.200-192.168.1.250
+  backup:
+    endpointURL: http://192.168.1.100:9000
+    bucket: cnpg-backups
+  pihole:
+    dnsIP: "192.168.1.253"
+
+# ── Applications ──────────────────────────────────────────────────────────────
+# Apps with "chart" use Argo CD multi-source: chart from upstream Helm repo,
+# values from the git repo (platform/*/values.yaml) via $values ref.
+# Apps with "path" are umbrella charts with custom templates in the git repo.
+# Optional helm.values overrides (Go templates) are evaluated at render time.
+apps:
+  # Wave -4: Storage provisioners
+  - name: nfs-provisioner-ssd
+    namespace: nfs-provisioner
+    chart: nfs-subdir-external-provisioner
+    repoURL: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
+    chartVersion: "4.0.18"
+    valuesPath: platform/nfs-provisioner-ssd
+    wave: "-4"
+    helm:
+      values: |
+        nfs:
+          server: "{{ .Values.env.nas.ip }}"
+          path: "{{ .Values.env.nas.ssdPath }}"
+
+  - name: nfs-provisioner-hdd
+    namespace: nfs-provisioner
+    chart: nfs-subdir-external-provisioner
+    repoURL: https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner
+    chartVersion: "4.0.18"
+    valuesPath: platform/nfs-provisioner-hdd
+    wave: "-4"
+    helm:
+      values: |
+        nfs:
+          server: "{{ .Values.env.nas.ip }}"
+          path: "{{ .Values.env.nas.hddPath }}"
+
+  # Wave -3: Core infrastructure (umbrella charts with custom templates)
+  - name: cert-manager
+    namespace: cert-manager
+    path: platform/cert-manager
+    wave: "-3"
+    serverSideApply: true
+    helm:
+      values: |
+        letsencrypt:
+          email: "{{ .Values.env.letsencryptEmail }}"
+
+  - name: metallb
+    namespace: metallb-system
+    path: platform/metallb
+    wave: "-3"
+    helm:
+      values: |
+        addressPool:
+          addresses:
+            - "{{ .Values.env.metallb.addressRange }}"
+
+  # Wave -2: Networking and secrets
+  - name: traefik
+    namespace: traefik
+    chart: traefik
+    repoURL: ghcr.io/traefik/helm
+    chartVersion: "39.0.8"
+    valuesPath: platform/traefik
+    wave: "-2"
+
+  - name: external-secrets
+    namespace: external-secrets
+    chart: external-secrets
+    repoURL: ghcr.io/external-secrets/charts
+    chartVersion: "2.4.0"
+    valuesPath: platform/external-secrets
+    wave: "-2"
+
+  # Wave -1: Storage
+  - name: longhorn
+    namespace: longhorn-system
+    chart: longhorn
+    repoURL: https://charts.longhorn.io
+    chartVersion: "1.8.1"
+    valuesPath: platform/longhorn
+    wave: "-1"
+    helm:
+      values: |
+        defaultSettings:
+          backupTarget: "nfs://{{ .Values.env.nas.ip }}:{{ .Values.env.nas.longhornBackupPath }}"
+        ingress:
+          host: "longhorn.{{ .Values.env.domain }}"
+
+  # Wave 0: GitOps self-management
+  - name: argocd
+    namespace: argocd
+    chart: argo-cd
+    repoURL: ghcr.io/argoproj/argo-helm
+    chartVersion: "9.5.4"
+    valuesPath: platform/argocd
+    wave: "0"
+    helm:
+      values: |
+        server:
+          ingress:
+            hosts:
+              - "argocd.{{ .Values.env.domain }}"
+            tls:
+              - secretName: argocd-tls
+                hosts:
+                  - "argocd.{{ .Values.env.domain }}"
+
+  # Wave 1: Operators
+  - name: cnpg-operator
+    namespace: cnpg-system
+    chart: cloudnative-pg
+    repoURL: ghcr.io/cloudnative-pg/charts
+    chartVersion: "0.28.0"
+    valuesPath: platform/cnpg-operator
+    wave: "1"
+
+  - name: eck-operator
+    namespace: elastic-system
+    chart: eck-operator
+    repoURL: https://helm.elastic.co
+    chartVersion: "3.3.2"
+    valuesPath: platform/eck-operator
+    wave: "1"
+
+  # Wave 2: Data services
+  - name: cnpg-cluster
+    namespace: cnpg
+    chart: cluster
+    repoURL: ghcr.io/cloudnative-pg/charts
+    chartVersion: "0.6.0"
+    valuesPath: platform/cnpg-cluster
+    wave: "2"
+    helm:
+      values: |
+        backups:
+          barmanObjectStore:
+            endpointURL: "{{ .Values.env.backup.endpointURL }}"
+            destinationPath: "s3://{{ .Values.env.backup.bucket }}/"
+
+  - name: eck-stack
+    namespace: elastic
+    chart: eck-stack
+    repoURL: https://helm.elastic.co
+    chartVersion: "0.18.2"
+    valuesPath: platform/eck-stack
+    wave: "2"
+
+  - name: rabbitmq
+    namespace: rabbitmq
+    path: platform/rabbitmq
+    wave: "2"
+    serverSideApply: true
+    helm:
+      values: |
+        ingress:
+          host: "rabbitmq.{{ .Values.env.domain }}"
+
+  # Wave 3: Monitoring
+  - name: kube-state-metrics
+    namespace: monitoring
+    chart: kube-state-metrics
+    repoURL: ghcr.io/prometheus-community/charts
+    chartVersion: "7.2.2"
+    valuesPath: platform/kube-state-metrics
+    wave: "3"
+
+  - name: grafana
+    namespace: monitoring
+    chart: grafana
+    repoURL: ghcr.io/grafana/helm-charts
+    chartVersion: "10.5.15"
+    valuesPath: platform/grafana
+    wave: "3"
+    helm:
+      values: |
+        ingress:
+          hosts:
+            - "grafana.{{ .Values.env.domain }}"
+          tls:
+            - secretName: grafana-tls
+              hosts:
+                - "grafana.{{ .Values.env.domain }}"
+
+  - name: zabbix
+    namespace: zabbix
+    chart: zabbix
+    repoURL: https://zabbix-community.github.io/helm-zabbix
+    chartVersion: "7.0.12"
+    valuesPath: platform/zabbix
+    wave: "3"
+    helm:
+      values: |
+        zabbixWeb:
+          ingress:
+            hosts:
+              - host: "zabbix.{{ .Values.env.domain }}"
+                paths:
+                  - path: /
+                    pathType: Prefix
+            tls:
+              - secretName: zabbix-tls
+                hosts:
+                  - "zabbix.{{ .Values.env.domain }}"
+
+  # Wave 4: Applications
+  - name: pgadmin4
+    namespace: pgadmin
+    chart: pgadmin4
+    repoURL: https://helm.runix.net
+    chartVersion: "1.62.0"
+    valuesPath: platform/pgadmin4
+    wave: "4"
+    helm:
+      values: |
+        ingress:
+          hosts:
+            - host: "pgadmin.{{ .Values.env.domain }}"
+              paths:
+                - path: /
+                  pathType: Prefix
+          tls:
+            - secretName: pgadmin-tls
+              hosts:
+                - "pgadmin.{{ .Values.env.domain }}"
+
+  - name: pihole
+    namespace: pihole
+    chart: pihole
+    repoURL: https://mojo2600.github.io/pihole-kubernetes
+    chartVersion: "2.27.0"
+    valuesPath: platform/pihole
+    wave: "4"
+    helm:
+      values: |
+        serviceDns:
+          annotations:
+            metallb.universe.tf/loadBalancerIPs: "{{ .Values.env.pihole.dnsIP }}"
+        ingress:
+          hosts:
+            - "pihole.{{ .Values.env.domain }}"
+          tls:
+            - secretName: pihole-tls
+              hosts:
+                - "pihole.{{ .Values.env.domain }}"
+
+  - name: owncloud
+    namespace: owncloud
+    chart: ocis
+    repoURL: https://jacobcolvin.com/helm-charts
+    chartVersion: "2.0.0"
+    valuesPath: platform/owncloud
+    wave: "4"
+    helm:
+      values: |
+        externalDomain: "owncloud.{{ .Values.env.domain }}"
+        ingress:
+          tls:
+            - secretName: owncloud-tls
+              hosts:
+                - "owncloud.{{ .Values.env.domain }}"

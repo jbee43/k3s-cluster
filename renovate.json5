@@ -1,0 +1,55 @@
+{
+  // Inherits the shared preset from admini/ci-shared (renovate-config.json5).
+  // Schedule, timezone, dashboard, throttling, labels — all inherited.
+  // Only repo-specific overrides belong here.
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["local>admini/ci-shared:renovate-config"],
+  // k3s-cluster lays out charts under platform/, not clusters/. Override the
+  // shared preset's fileMatch so the right files get scanned for each manager.
+  "kubernetes": {
+    "fileMatch": [
+      "platform/.+/values\\.yaml$",
+      "platform/.+/templates/.+\\.yaml$"
+    ]
+  },
+  "helm-values": {
+    "fileMatch": ["platform/.+/values\\.yaml$"]
+  },
+  "helmv3": {
+    "fileMatch": ["platform/.+/Chart\\.yaml$"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned chart versions in apps/values.yaml (Argo CD multi-source apps)",
+      "fileMatch": ["^apps/values\\.yaml$"],
+      "matchStrings": [
+        "chart:\\s*(?<depName>[\\w-]+)\\s*\\n\\s*repoURL:\\s*(?<registryUrl>\\S+)\\s*\\n\\s*chartVersion:\\s*\"(?<currentValue>[^\"]+)\""
+      ],
+      "datasourceTemplate": "helm"
+    },
+    {
+      "customType": "regex",
+      "description": "PostgreSQL image pinned in cnpg-cluster values",
+      "fileMatch": ["^platform/cnpg-cluster/values\\.yaml$"],
+      "matchStrings": [
+        "imageName:\\s*(?<depName>ghcr\\.io/cloudnative-pg/postgresql):(?<currentValue>[\\w.-]+)"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group all non-major Helm chart updates",
+      "matchManagers": ["helm-values", "helmv3", "regex"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "helm charts (non-major)"
+    },
+    {
+      "description": "Major Helm chart updates need individual review",
+      "matchManagers": ["helm-values", "helmv3", "regex"],
+      "matchUpdateTypes": ["major"],
+      "labels": ["dependencies", "major-update"]
+    }
+  ]
+}

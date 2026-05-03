@@ -1,0 +1,42 @@
+# pgAdmin4 — web UI for PostgreSQL administration.
+# Chart ref: https://github.com/rowanruseler/helm-charts/blob/main/charts/pgadmin4/values.yaml
+existingSecret: pgadmin-credentials
+secretKeys:
+  pgadminPasswordKey: password
+
+env:
+  email: admin@example.com
+
+persistentVolumeClaim:
+  enabled: true
+  storageClassName: nfs-ssd
+  size: 2Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+networkPolicy:
+  enabled: true
+
+serverDefinitions:
+  enabled: true
+  servers:
+    cnpg-cluster:
+      Name: "CNPG Cluster"
+      Group: "Production"
+      Port: 5432
+      Username: postgres
+      Host: postgres-cluster-rw.cnpg.svc.cluster.local
+      SSLMode: prefer
+      MaintenanceDB: postgres

@@ -1,0 +1,12 @@
+apiVersion: v2
+name: rabbitmq
+description: RabbitMQ via the official Cluster Operator (vendored manifest) plus a RabbitmqCluster CR
+type: application
+version: 1.0.0
+# appVersion = pinned upstream operator version. Bump together with templates/operator.yaml.
+appVersion: "v2.20.1"
+annotations:
+  # GitHub owner/repo used by scripts/list-versions.ps1 to discover newer releases.
+  # When updating: re-download cluster-operator-ghcr-io.yml from the matching release tag.
+  k3s-cluster/upstream: rabbitmq/cluster-operator
+  k3s-cluster/upstreamAsset: cluster-operator-ghcr-io.yml

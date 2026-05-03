@@ -1,0 +1,58 @@
+# Zabbix — infrastructure monitoring (server + web + agents).
+# Chart ref: https://github.com/zabbix-community/helm-zabbix/blob/master/charts/zabbix/values.yaml
+postgresql:
+  enabled: false
+
+zabbixServer:
+  enabled: true
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  extraEnv:
+    - name: DB_SERVER_HOST
+      value: postgres-cluster-rw.cnpg.svc.cluster.local
+    - name: DB_SERVER_PORT
+      value: "5432"
+    - name: POSTGRES_DB
+      value: zabbix
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef:
+          name: zabbix-db-credentials
+          key: username
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: zabbix-db-credentials
+          key: password
+
+zabbixWeb:
+  enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.tls: "true"
+
+zabbixAgent:
+  enabled: true
+  runAsDaemonSet: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi

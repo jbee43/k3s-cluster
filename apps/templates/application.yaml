@@ -1,0 +1,56 @@
+{{- range .Values.apps }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .name }}
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .wave | default "0" | quote }}
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ $.Values.spec.project }}
+  {{- if .chart }}
+  sources:
+    - repoURL: {{ .repoURL }}
+      chart: {{ .chart }}
+      targetRevision: {{ .chartVersion }}
+      helm:
+        valueFiles:
+          - $values/{{ .valuesPath }}/values.yaml
+        {{- if .helm }}
+        valuesObject: {{- tpl .helm.values $ | fromYaml | toYaml | nindent 10 }}
+        {{- end }}
+    - repoURL: {{ $.Values.spec.source.repoURL }}
+      targetRevision: {{ $.Values.spec.source.targetRevision }}
+      ref: values
+  {{- else }}
+  source:
+    repoURL: {{ $.Values.spec.source.repoURL }}
+    targetRevision: {{ $.Values.spec.source.targetRevision }}
+    path: {{ .path }}
+    {{- if .helm }}
+    helm:
+      valuesObject: {{- tpl .helm.values $ | fromYaml | toYaml | nindent 8 }}
+    {{- end }}
+  {{- end }}
+  destination:
+    server: {{ $.Values.spec.destination.server }}
+    namespace: {{ .namespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      {{- if .serverSideApply }}
+      - ServerSideApply=true
+      {{- end }}
+    retry:
+      limit: 3
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 3m
+{{- end }}

@@ -1,0 +1,40 @@
+# Longhorn — distributed block storage with snapshots; backup target on NAS NFS.
+# Chart ref: https://github.com/longhorn/charts/blob/master/charts/longhorn/values.yaml
+defaultSettings:
+  defaultReplicaCount: 2
+  backupTargetCredentialSecret: ""
+  storageMinimalAvailablePercentage: 15
+  defaultDataLocality: best-effort
+  replicaAutoBalance: best-effort
+  guaranteedInstanceManagerCPU: 5
+
+persistence:
+  defaultClass: false
+  defaultClassReplicaCount: 2
+  reclaimPolicy: Retain
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  tls: true
+  tlsSecret: longhorn-tls
+  annotations:
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+longhornManager:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+longhornDriver:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
