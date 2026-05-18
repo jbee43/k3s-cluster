@@ -1,0 +1,17 @@
+# Elastic Cloud on Kubernetes operator — reconciles Elastic CRs.
+# Chart ref: https://github.com/elastic/cloud-on-k8s/blob/main/deploy/eck-operator/values.yaml
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+createClusterScopedResources: true
+managedNamespaces: []
+
+webhook:
+  enabled: true

@@ -1,0 +1,17 @@
+# NFS subdir provisioner — HDD/cold tier StorageClass on NAS.
+# Chart ref: https://github.com/kubernetes-sigs/nfs-subdir-external-provisioner/blob/master/charts/nfs-subdir-external-provisioner/values.yaml
+storageClass:
+  name: nfs-hdd
+  defaultClass: false
+  reclaimPolicy: Retain
+  archiveOnDelete: true
+  accessModes: ReadWriteMany
+  volumeBindingMode: Immediate
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 32Mi
+  limits:
+    cpu: 100m
+    memory: 64Mi

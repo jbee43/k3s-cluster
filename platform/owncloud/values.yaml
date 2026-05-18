@@ -1,0 +1,19 @@
+# ownCloud Infinite Scale (oCIS) — file sync and share.
+# Chart ref: https://github.com/MacroPower/helm-charts/blob/main/charts/ocis/values.yaml
+# Persistence is per-service in this chart (services.<name>.persistence) — enable as needed
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+secretRefs:
+  adminUserSecretRef: owncloud-admin-credentials

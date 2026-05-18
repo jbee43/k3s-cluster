@@ -1,0 +1,23 @@
+apiVersion: rabbitmq.com/v1beta1
+kind: RabbitmqCluster
+metadata:
+  name: {{ .Values.cluster.name }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  replicas: {{ .Values.cluster.replicas }}
+  {{- with .Values.cluster.image }}
+  image: {{ . }}
+  {{- end }}
+  resources:
+    {{- toYaml .Values.cluster.resources | nindent 4 }}
+  persistence:
+    storageClassName: {{ .Values.cluster.storageClass }}
+    storage: {{ .Values.cluster.storageSize }}
+  rabbitmq:
+    additionalPlugins:
+      {{- range .Values.cluster.additionalPlugins }}
+      - {{ . }}
+      {{- end }}

@@ -1,0 +1,65 @@
+# Grafana — observability dashboards.
+# Chart ref: https://github.com/grafana/helm-charts/blob/main/charts/grafana/values.yaml
+replicas: 1
+
+admin:
+  existingSecret: grafana-admin-credentials
+  userKey: username
+  passwordKey: password
+
+persistence:
+  enabled: true
+  storageClassName: nfs-ssd
+  size: 5Gi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.tls: "true"
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Elasticsearch
+        type: elasticsearch
+        url: https://elasticsearch-es-http.elastic.svc:9200
+        access: proxy
+        isDefault: false
+        jsonData:
+          timeField: "@timestamp"
+          esVersion: "8.17.0"
+          tlsSkipVerify: true
+      - name: Zabbix
+        type: alexanderzobnin-zabbix-datasource
+        url: http://zabbix-zabbix-web.zabbix.svc:80/api_jsonrpc.php
+        access: proxy
+        isDefault: false
+
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: default
+        orgId: 1
+        folder: ""
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+
+plugins:
+  - alexanderzobnin-zabbix-app
+
+networkPolicy:
+  enabled: true

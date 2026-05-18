@@ -1,0 +1,24 @@
+# MetalLB — bare-metal LoadBalancer (L2 mode); IPAddressPool + L2Advertisement in templates/.
+# Chart ref: https://github.com/metallb/metallb/blob/main/charts/metallb/values.yaml
+addressPool:
+  addresses:
+    - 192.168.1.200-192.168.1.250
+
+metallb:
+  controller:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+
+  speaker:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
